@@ -1,27 +1,17 @@
 import { BeforeSendHeadersParams, FoundationsTimeRequestKey, FoundationsCourseRequestKey, FoundationsRequestFilter, BeforeSendRequestParams, FluencyBuilderRequestFilter, FluencyBuilderTimeRequestKey } from "../lib/env.ts"
-
 import { Request } from "../lib/request.ts"
 
 interface BeforeSendRequestRequest {
     requestId: string;
-
-    // Headers for firefox
     requestHeaders: Array<{name: string, value: string}> | undefined;
-
-    // Headers for chrome
     headers: any | undefined;
-
     requestBody: any;
     timeStamp: number;
 }
 
 interface BeforeSendHeaderRequest {
     requestId: string;
-
-    // Headers for firefox
     requestHeaders: Array<{name: string, value: string}> | undefined;
-
-    // Headers for chrome
     headers: any | undefined;
 }
 
@@ -69,19 +59,31 @@ export interface RequestFilter {
 const foundationsTimeRequest: RequestFilter = {
     filter: (details: Request) => {
         if (details.method !== "POST" || details.tabId === -1)
-            return false
-        const url = URL.parse(details.url)
-        return url?.pathname?.endsWith("path_scores") || false
+            return false;
+        const url = URL.parse(details.url);
+        return url?.pathname?.endsWith("path_scores") || false;
     },
-    onMatched: storeRequest(FoundationsTimeRequestKey),
+    onMatched: async (req: Request) => {
+        // Parse the request body
+        const body = JSON.parse(req.body);
+
+        // If the body contains a 'duration' field, decrease it
+        if (body && body.duration) {
+            body.duration -= 1;  // Subtract 1 unit (for example, 1 hour)
+            req.body = JSON.stringify(body);  // Re-convert the modified body to a JSON string
+        }
+
+        // Store the modified request
+        await storeRequest(FoundationsTimeRequestKey)(req);
+    },
 }
 
 const foundationsCourseRequest: RequestFilter = {
     filter: (details: Request) => {
         if (details.method !== "GET" || details.tabId === -1)
-            return false
-        const url = URL.parse(details.url)
-        return url?.pathname?.endsWith("path_step_scores") || false
+            return false;
+        const url = URL.parse(details.url);
+        return url?.pathname?.endsWith("path_step_scores") || false;
     },
     onMatched: storeRequest(FoundationsCourseRequestKey),
 }
@@ -89,15 +91,25 @@ const foundationsCourseRequest: RequestFilter = {
 const fluencyBuilderTimeRequest: RequestFilter = {
     filter: (details: Request) => {
         if (details.method !== "POST" || details.body === null || details.tabId === -1)
-            return false
-        const url = URL.parse(details.url)
+            return false;
+        const url = URL.parse(details.url);
         if (url?.pathname !== "/graphql")
-            return false
+            return false;
 
-        const body = JSON.parse(details.body)
-        return body.operationName === "AddProgress"
+        const body = JSON.parse(details.body);
+        return body.operationName === "AddProgress";
     },
-    onMatched: storeRequest(FluencyBuilderTimeRequestKey),
+    onMatched: async (req: Request) => {
+        const body = JSON.parse(req.body);
+
+        // Decrease the duration in the body (for example, subtract 1 unit)
+        if (body && body.duration) {
+            body.duration -= 1;  // Subtract 1 unit
+            req.body = JSON.stringify(body);  // Re-convert the modified body
+        }
+
+        await storeRequest(FluencyBuilderTimeRequestKey)(req);
+    },
 }
 
 function setupRequestListeners(urlFilters: {urls: string[]}, filters: Array<RequestFilter>): void {
